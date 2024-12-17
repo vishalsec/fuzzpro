@@ -1,0 +1,5 @@
+PySocks>=1.7.1
+requests>=2.27.0
+colorama>=0.4.4
+beautifulsoup4>=4.8.0
+setuptools>=66.0.0
