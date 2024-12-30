@@ -10,7 +10,7 @@ def print_help():
     """Print usage instructions and available options."""
     help_text = f"""
 {Fore.CYAN}Usage:{Style.RESET_ALL}
-    python fuzzpro.py -u <url> -w <wordlist> [options]
+    python tool.py -u <url> -w <wordlist> [options]
 
 {Fore.CYAN}Options:{Style.RESET_ALL}
     -u, --url       Target URL with FUZZ as the placeholder for brute-forcing (required)
@@ -19,10 +19,11 @@ def print_help():
     -s, --silent    Suppress output for specified response codes (comma-separated)
     -th, --threads  Number of requests to send per second (default: 50)
     -H, --header    Custom headers in the format 'Key:Value' (can be used multiple times)
+    -c, --chunk     Number of words per chunk to process at a time (default: 1000)
     -h, --help      Show this help message and exit
 
 {Fore.CYAN}Example:{Style.RESET_ALL}
-    python fuzzpro.py -u https://example.com/FUZZ -w ./wordlist.txt -t 120 -s 403,503,421 -th 20 -H "Authorization: Bearer TOKEN" -H "Custom-Header: Value"
+    python tool.py -u https://example.com/FUZZ -w ./wordlist.txt -t 120 -s 403,503,421 -th 20 -H "Authorization: Bearer TOKEN" -H "Custom-Header: Value"
 """
     print(help_text)
 
@@ -45,7 +46,7 @@ def detect_waf(response, sequential_403_counter):
     if response.status_code == 403:
         sequential_403_counter[0] += 1
         if sequential_403_counter[0] >= 50:  # Trigger only after consecutive 403 responses
-            print("Potential WAF or blocking detected - 403 responses.")
+            print("Potential WAF or blocking detected after 50 consecutive 403 responses.")
             return True
     else:
         sequential_403_counter[0] = 0  # Reset the counter if a non-403 response is received
@@ -63,7 +64,7 @@ def detect_waf(response, sequential_403_counter):
 def get_page_title(response):
     """Extract the page title from the HTML response."""
     try:
-        soup = BeautifulSoup(response.text, features="xml")
+        soup = BeautifulSoup(response.text, 'lxml')  # Use lxml parser for reliability
         title = soup.title.string if soup.title else "No Title"
         return title.strip()
     except Exception as e:
@@ -175,4 +176,4 @@ if __name__ == "__main__":
             print("Error: The URL must contain the placeholder 'FUZZ'. Exiting.")
         else:
             # Start brute-forcing
-            brute_force(args.url, wordlist, args.time, silent_codes, args.threads, headers, args.chunk)
+            brute_force(args.url, wordlist, args.time, silent_codes, args.threads, headers, args.chunk)       

@@ -10,7 +10,7 @@ def print_help():
     """Print usage instructions and available options."""
     help_text = f"""
 {Fore.CYAN}Usage:{Style.RESET_ALL}
-    python fuzzpro.py -u <url> -w <wordlist> [options]
+    python tool.py -u <url> -w <wordlist> [options]
 
 {Fore.CYAN}Options:{Style.RESET_ALL}
     -u, --url       Target URL with FUZZ as the placeholder for brute-forcing (required)
@@ -22,7 +22,7 @@ def print_help():
     -h, --help      Show this help message and exit
 
 {Fore.CYAN}Example:{Style.RESET_ALL}
-    python fuzzpro.py -u https://example.com/FUZZ -w ./wordlist.txt -t 120 -s 403,503,421 -th 20 -H "Authorization: Bearer TOKEN" -H "Custom-Header: Value"
+    python tool.py -u https://example.com/FUZZ -w ./wordlist.txt -t 120 -s 403,503,421 -th 20 -H "Authorization: Bearer TOKEN" -H "Custom-Header: Value"
 """
     print(help_text)
 
@@ -35,17 +35,12 @@ def load_wordlist(wordlist_file):
         print(f"Wordlist file '{wordlist_file}' not found.")
         return []
 
-def chunk_wordlist(wordlist, chunk_size):
-    """Divide the wordlist into chunks of the specified size."""
-    for i in range(0, len(wordlist), chunk_size):
-        yield wordlist[i:i + chunk_size]
-
 def detect_waf(response, sequential_403_counter):
     """Refined WAF detection based on response patterns and headers."""
     if response.status_code == 403:
         sequential_403_counter[0] += 1
         if sequential_403_counter[0] >= 50:  # Trigger only after consecutive 403 responses
-            print("Potential WAF or blocking detected - 403 responses.")
+            print("Potential WAF or blocking detected after 50 consecutive 403 responses.")
             return True
     else:
         sequential_403_counter[0] = 0  # Reset the counter if a non-403 response is received
@@ -54,16 +49,16 @@ def detect_waf(response, sequential_403_counter):
         print("Rate limiting detected (429 Too Many Requests).")
         return True
 
-    """if "captcha" in response.text.lower() or "access denied" in response.text.lower():
+    if "captcha" in response.text.lower() or "access denied" in response.text.lower():
         print("WAF response detected in body text.")
-        return True"""
+        return True
 
     return False
 
 def get_page_title(response):
     """Extract the page title from the HTML response."""
     try:
-        soup = BeautifulSoup(response.text, features="xml")
+        soup = BeautifulSoup(response.text, 'html.parser')
         title = soup.title.string if soup.title else "No Title"
         return title.strip()
     except Exception as e:
@@ -107,7 +102,7 @@ def make_request(base_url, word, headers, wait_time, sequential_403_counter, sil
             percent_done = (progress_counter[0] / total_words) * 100
             print(f"{Fore.CYAN}Progress: {percent_done:.2f}% completed.{Style.RESET_ALL}", end="\r")
 
-def brute_force(base_url, wordlist, wait_time=320, silent_codes=None, threads=50, headers=None, chunk_size=1000):
+def brute_force(base_url, wordlist, wait_time=320, silent_codes=None, threads=50, headers=None):
     """Perform brute-forcing with WAF handling using multithreading."""
     sequential_403_counter = [0]  # Using a list to allow modification inside threads
     total_words = len(wordlist)
@@ -115,13 +110,12 @@ def brute_force(base_url, wordlist, wait_time=320, silent_codes=None, threads=50
 
     semaphore = BoundedSemaphore(threads)  # Control the number of threads per second
 
-    for chunk in chunk_wordlist(wordlist, chunk_size):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-            futures = [
-                executor.submit(make_request, base_url, word, headers, wait_time, sequential_403_counter, silent_codes, total_words, progress_counter, semaphore) 
-                for word in chunk
-            ]
-            concurrent.futures.wait(futures)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+        futures = [
+            executor.submit(make_request, base_url, word, headers, wait_time, sequential_403_counter, silent_codes, total_words, progress_counter, semaphore) 
+            for word in wordlist
+        ]
+        concurrent.futures.wait(futures)
 
 if __name__ == "__main__":
     # Set up argument parsing
@@ -136,7 +130,6 @@ if __name__ == "__main__":
     parser.add_argument("-s", "--silent", help="Comma-separated response codes to suppress output (e.g., 403,503,421)")
     parser.add_argument("-th", "--threads", type=int, default=50, help="Number of requests to send per second")
     parser.add_argument("-H", "--header", action="append", help="Custom headers in the format 'Key:Value' (can be used multiple times)")
-    parser.add_argument("-c", "--chunk", type=int, default=1000, help="Number of words per chunk to process at a time")
     parser.add_argument("-h", "--help", action="store_true", help="Show help message and exit")
 
     args = parser.parse_args()
@@ -175,4 +168,4 @@ if __name__ == "__main__":
             print("Error: The URL must contain the placeholder 'FUZZ'. Exiting.")
         else:
             # Start brute-forcing
-            brute_force(args.url, wordlist, args.time, silent_codes, args.threads, headers, args.chunk)
+            brute_force(args.url, wordlist, args.time, silent_codes, args.threads, headers)
